@@ -1,126 +1,512 @@
-# DisruptionDesk — Logistics Control Room
-> **Disruption-Aware Logistics Planning & Rapid Operational Recovery**  
-> Built for 24-Hour Hackathon • Control Desk UI for Logistics Managers
+<p align="center">
+  <img src="./docs/bear.jpg" />
+</p>
 
----
+[![Build Status](https://img.shields.io/github/actions/workflow/status/pmndrs/zustand/test.yml?branch=main&style=flat&colorA=000000&colorB=000000)](https://github.com/pmndrs/zustand/actions?query=workflow%3ATest)
+[![Build Size](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fdeno.bundlejs.com%2F%3Fq%3Dzustand&query=%24.size.uncompressedSize&style=flat&label=bundle%20size&colorA=000000&colorB=000000)](https://bundlejs.com/?q=zustand)
+[![Version](https://img.shields.io/npm/v/zustand?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/zustand)
+[![Downloads](https://img.shields.io/npm/dt/zustand.svg?style=flat&colorA=000000&colorB=000000)](https://www.npmjs.com/package/zustand)
+[![Discord Shield](https://img.shields.io/discord/740090768164651008?style=flat&colorA=000000&colorB=000000&label=discord&logo=discord&logoColor=ffffff)](https://discord.gg/poimandres)
 
-## 1. Quick Start — How to Run
+<a href="https://dai-shi.github.io/zustand-banner-sponsorship/sponsors/" target="_blank" rel="noopener">
+  <p align="center">
+    <img src="https://dai-shi.github.io/zustand-banner-sponsorship/api/banner.png" />
+  </p>
+</a>
 
-The app is **already running in the background** on:
-👉 **[http://localhost:5173/](http://localhost:5173/)**
+A small, fast and scalable bearbones state-management solution using simplified flux principles. Has a comfy API based on hooks, isn't boilerplatey or opinionated.
 
-If you want to start it yourself in a new terminal window:
+Don't disregard it because it's cute. It has quite the claws, lots of time was spent dealing with common pitfalls, like the dreaded [zombie child problem](https://react-redux.js.org/api/hooks#stale-props-and-zombie-children), [react concurrency](https://github.com/bvaughn/rfcs/blob/useMutableSource/text/0000-use-mutable-source.md), and [context loss](https://github.com/facebook/react/issues/13332) between mixed renderers. It may be the one state-manager in the React space that gets all of these right.
+
+You can try a live [demo](https://zustand-demo.pmnd.rs/) and read the [docs](https://zustand.docs.pmnd.rs/).
 
 ```bash
-# 1. Open the project folder
-cd "c:\Users\P.SAHANA\Downloads\New folder"
-
-# 2. Install dependencies (already installed)
-npm install
-
-# 3. Start the local development server
-npm run dev
+npm install zustand
 ```
 
-Then open your browser and navigate to **`http://localhost:5173/`**.
+:warning: This readme is written for JavaScript users. If you are a TypeScript user, be sure to check out our [TypeScript Usage section](#typescript-usage).
+
+## First create a store
+
+Your store is a hook! You can put anything in it: primitives, objects, functions. State has to be updated immutably and the `set` function [merges state](./docs/learn/guides/immutable-state-and-merging.md) to help it.
+
+```jsx
+import { create } from 'zustand'
+
+const useBearStore = create((set) => ({
+  bears: 0,
+  increasePopulation: () => set((state) => ({ bears: state.bears + 1 })),
+  removeAllBears: () => set({ bears: 0 }),
+}))
+```
+
+## Then bind your components, and that's it!
+
+Use the hook anywhere, no providers are needed. Select your state and the component will re-render on changes.
+
+```jsx
+function BearCounter() {
+  const bears = useBearStore((state) => state.bears)
+  return <h1>{bears} around here ...</h1>
+}
+
+function Controls() {
+  const increasePopulation = useBearStore((state) => state.increasePopulation)
+  return <button onClick={increasePopulation}>one up</button>
+}
+```
+
+### Why zustand over redux?
+
+- Simple and un-opinionated
+- Makes hooks the primary means of consuming state
+- Doesn't wrap your app in context providers
+- [Can inform components transiently (without causing render)](#transient-updates-for-often-occurring-state-changes)
+
+### Why zustand over context?
+
+- Less boilerplate
+- Renders components only on changes
+- Centralized, action-based state management
 
 ---
 
-## 2. Problem Statement
-When real-world disruptions strike (vehicle breakdowns, sudden road closures, monsoon downpours, customer schedule reschedules), logistics operators struggle under time pressure to answer three critical questions on a single screen:
-1. **WHAT CHANGED?** (Which asset or corridor failed?)
-2. **WHAT IS AFFECTED?** (Which stops are directly hit, and which cascade across vehicles due to consignment dependencies?)
-3. **WHAT SHOULD I DO NEXT?** (What are the ranked, actionable recovery plans with cost and delay tradeoffs?)
+# Recipes
 
----
+## Fetching everything
 
-## 3. Solution Overview: The 3-Question Framework
-**DisruptionDesk** provides a real-time, single-screen control desk designed for laptop screens (1366x768+) and tablets.
+You can, but bear in mind that it will cause the component to update on every state change!
 
-- **Header & Simulated Clock**: Starts at `09:15` with `+15m` and `+30m` controls to advance simulated time, update deliveries, and mark completed stops.
-- **Top Status Banner**: Real-time 3-part triage sequence updating live on disruptions:
-  `WHAT CHANGED -> WHAT IS AFFECTED -> WHAT NEXT`
-- **Left Column — Live Plan**:
-  - Interactive Leaflet map with Coimbatore coordinates, depot marker, numbered delivery stop markers, and colored routes.
-  - Live van positions with truck icons.
-  - Fleet capacity utilization cards.
-  - Interactive cross-van dependency chain (`D6 -> D7 -> D12`).
-  - Searchable and filterable delivery manifest table.
-- **Middle Column — What is Affected**:
-  - Direct impact detection.
-  - **Animated dependency cascade** revealing downstream compromised stops 300ms apart.
-  - Priority scoring (`CRITICAL`, `AT RISK`, `LOW RISK`) based on customer urgency, time remaining, and dependent deliveries.
-- **Right Column — What Should I Do Next**:
-  - Generates 3 concrete, ranked recovery plans:
-    1. **Reassign**: Load balances packages to healthy vans with spare capacity.
-    2. **Resequence / Reroute**: Detours via alternate routes or reprioritizes tightest windows first.
-    3. **Delay / Renegotiate**: Grace periods with client notification lists.
-  - "Hover to Preview" ghosted routes on the map.
-  - One-click **Apply Plan** that updates routes to blue, recalculates ETAs, and reveals a **Before vs. After** impact audit card with an **Undo** button.
-- **Bottom Activity Log**: Collapsible incident audit timeline tracking every event.
+```jsx
+const state = useBearStore()
+```
 
----
+## Selecting multiple state slices
 
-## 4. Demo Walkthrough (Step-by-Step)
+It detects changes with strict-equality (old === new) by default, this is efficient for atomic state picks.
 
-### Scenario 1: Van 2 Breakdown (Primary Demo)
-1. Open [http://localhost:5173/](http://localhost:5173/). Notice all vans are green and the banner states *"All deliveries on track"*.
-2. Click **"Report Disruption"** in the header.
-3. Select preset **"1. Van 2 Breakdown"** (Van 2 halted at 09:30, out for the day).
-4. **Observe the Banner**: Updates immediately to:
-   `WHAT CHANGED: Van 2 broke down at 09:30 -> WHAT IS AFFECTED: 6 deliveries (2 critical) -> WHAT NEXT: 3 options ready`.
-5. **Observe the Map & Impact Panel**:
-   - Van 2's route turns red.
-   - Deliveries `D4`, `D5`, `D6` flagged as directly affected.
-   - `D7` and `D12` cascade sequentially (animated) because `D7` needs consignment `D6` and `D12` needs `D7`.
-   - **City Hospital (D4)** appears as **CRITICAL** at the top with reason: *"Critical recipient, due in 45 min"*.
-6. **Observe the Options Panel**:
-   - Evaluates 3 ranked recovery options.
-   - The top option is marked **RECOMMENDED** (reassigns `D4` & `D5` to Van 3 which has spare capacity).
-7. Hover over the recommended option to see the cyan ghosted detour route on the map.
-8. Click **"Apply Plan"**:
-   - Routes update immediately in cyan/blue.
-   - Before vs. After comparison card displays: *5 deliveries saved, 100% Medical SLAs met, +25m delay, +₹220 extra cost*.
-   - Click **"Copy Summary"** in the header to copy the incident briefing text.
-9. Click **"Undo Plan"** to verify rollback to the prior plan.
+```jsx
+const nuts = useBearStore((state) => state.nuts)
+const honey = useBearStore((state) => state.honey)
+```
 
-### Scenario 2: Avinashi Road Closure
-1. Click **"Report Disruption"** -> Select **"2. Avinashi Rd Closed"**.
-2. Road segment `R1` (Peelamedu ↔ Saravanampatti) is shown dashed red on the map.
-3. Recovery plan recommends detouring via *Sathy Road (+12 min)*.
-4. Apply the plan to see route updated.
+If you want to construct a single object with multiple state-picks inside, similar to redux's mapStateToProps, you can use [useShallow](./docs/learn/guides/prevent-rerenders-with-use-shallow.md) to prevent unnecessary rerenders when the selector output does not change according to shallow equal.
 
-### Scenario 3: Heavy Rain in North Coimbatore
-1. Click **"Report Disruption"** -> Select **"3. Heavy Rain North"**.
-2. Applies a 1.4x travel multiplier to legs in Saravanampatti, Thudiyalur, and Peelamedu.
-3. Tight delivery windows turn amber/at-risk. Resequencing options are provided.
+```jsx
+import { create } from 'zustand'
+import { useShallow } from 'zustand/react/shallow'
 
----
+const useBearStore = create((set) => ({
+  nuts: 0,
+  honey: 0,
+  treats: {},
+  // ...
+}))
 
-## 5. Algorithmic Logic Breakdown
+// Object pick, re-renders the component when either state.nuts or state.honey change
+const { nuts, honey } = useBearStore(
+  useShallow((state) => ({ nuts: state.nuts, honey: state.honey })),
+)
 
-- **Travel Time & ETA (`/src/logic/time.js`)**:
-  - Haversine distance formula between lat/lng points.
-  - Speed baseline: 30 km/h with 8 min dwell/service time per stop.
-  - Accounts for weather multiplier (1.4x) and road closure detours.
-- **Dependency Cascade (`/src/logic/dependencies.js`)**:
-  - Directed acyclic graph traversal (`buildDependencyGraph`).
-  - Downstream BFS traversal identifying parent-child consignment blockers.
-- **Priority Scoring (`/src/logic/priority.js`)**:
-  $$\text{Score} = \text{UrgencyScore} + \text{CustomerScore} + \text{DependentsScore}$$
-  - Window end $<30\text{m} \to 40$, $<90\text{m} \to 25$, else $10$
-  - Customer tier: Critical ($40$), High ($25$), Medium ($15$), Low ($5$)
-  - Downstream dependents: $+10$ per blocked child delivery
-  - Thresholds: $\ge 70$ CRITICAL, $40\text{--}69$ AT RISK, $<40$ LOW RISK
-- **Recovery Options Generator (`/src/logic/options.js`)**:
-  - Evaluates fleet spare capacities, driver shifts, and geographical proximity.
-  - Generates Reassign, Reroute/Resequence, and Delay/Renegotiate plans.
-  - Ranks by: Deliveries Saved (Desc) $\to$ Total Delay (Asc) $\to$ Marginal Cost (Asc).
+// Array pick, re-renders the component when either state.nuts or state.honey change
+const [nuts, honey] = useBearStore(
+  useShallow((state) => [state.nuts, state.honey]),
+)
 
----
+// Mapped picks, re-renders the component when state.treats changes in order, count or keys
+const treats = useBearStore(useShallow((state) => Object.keys(state.treats)))
+```
 
-## 6. Future Scope
-- Live GPS telemetry & telematics ingestion.
-- Real-time TomTom / Google Traffic API integrations.
-- Machine-learning predictive dwell time by delivery recipient profile.
-- Automated WhatsApp/SMS dispatch webhooks for customer notification.
+For more control over re-rendering, you may provide any custom equality function (this example requires the use of [`createWithEqualityFn`](./docs/migrations/migrating-to-v5.md#using-custom-equality-functions-such-as-shallow)).
+
+```jsx
+const treats = useBearStore(
+  (state) => state.treats,
+  (oldTreats, newTreats) => compare(oldTreats, newTreats),
+)
+```
+
+## Overwriting state
+
+The `set` function has a second argument, `false` by default. Instead of merging, it will replace the state model. Be careful not to wipe out parts you rely on, like actions.
+
+```jsx
+const useFishStore = create((set) => ({
+  salmon: 1,
+  tuna: 2,
+  deleteEverything: () => set({}, true), // clears the entire store, actions included
+  deleteTuna: () => set(({ tuna, ...rest }) => rest, true),
+}))
+```
+
+## Async actions
+
+Just call `set` when you're ready, zustand doesn't care if your actions are async or not.
+
+```jsx
+const useFishStore = create((set) => ({
+  fishies: {},
+  fetch: async (pond) => {
+    const response = await fetch(pond)
+    set({ fishies: await response.json() })
+  },
+}))
+```
+
+## Read from state in actions
+
+`set` allows fn-updates `set(state => result)`, but you still have access to state outside of it through `get`.
+
+```jsx
+const useSoundStore = create((set, get) => ({
+  sound: 'grunt',
+  action: () => {
+    const sound = get().sound
+    ...
+```
+
+## Reading/writing state and reacting to changes outside of components
+
+Sometimes you need to access state in a non-reactive way or act upon the store. For these cases, the resulting hook has utility functions attached to its prototype.
+
+:warning: This technique is not recommended for adding state in [React Server Components](https://github.com/reactjs/rfcs/blob/main/text/0188-server-components.md) (typically in Next.js 13 and above). It can lead to unexpected bugs and privacy issues for your users. For more details, see [#2200](https://github.com/pmndrs/zustand/discussions/2200).
+
+```jsx
+const useDogStore = create(() => ({ paw: true, snout: true, fur: true }))
+
+// Getting non-reactive fresh state
+const paw = useDogStore.getState().paw
+// Listening to all changes, fires synchronously on every change
+const unsub1 = useDogStore.subscribe(console.log)
+// Updating state, will trigger listeners
+useDogStore.setState({ paw: false })
+// Unsubscribe listeners
+unsub1()
+
+// You can of course use the hook as you always would
+function Component() {
+  const paw = useDogStore((state) => state.paw)
+  ...
+```
+
+### Using subscribe with selector
+
+If you need to subscribe with a selector,
+`subscribeWithSelector` middleware will help.
+
+With this middleware `subscribe` accepts an additional signature:
+
+```ts
+subscribe(selector, callback, options?: { equalityFn, fireImmediately }): Unsubscribe
+```
+
+```js
+import { subscribeWithSelector } from 'zustand/middleware'
+const useDogStore = create(
+  subscribeWithSelector(() => ({ paw: true, snout: true, fur: true })),
+)
+
+// Listening to selected changes, in this case when "paw" changes
+const unsub2 = useDogStore.subscribe((state) => state.paw, console.log)
+// Subscribe also exposes the previous value
+const unsub3 = useDogStore.subscribe(
+  (state) => state.paw,
+  (paw, previousPaw) => console.log(paw, previousPaw),
+)
+// Subscribe also supports an optional equality function
+const unsub4 = useDogStore.subscribe(
+  (state) => [state.paw, state.fur],
+  console.log,
+  { equalityFn: shallow },
+)
+// Subscribe and fire immediately
+const unsub5 = useDogStore.subscribe((state) => state.paw, console.log, {
+  fireImmediately: true,
+})
+```
+
+## Using zustand without React
+
+Zustand core can be imported and used without the React dependency. The only difference is that the create function does not return a hook, but the API utilities.
+
+```jsx
+import { createStore } from 'zustand/vanilla'
+
+const store = createStore((set) => ...)
+const { getState, setState, subscribe, getInitialState } = store
+
+export default store
+```
+
+You can use a vanilla store with `useStore` hook available since v4.
+
+```jsx
+import { useStore } from 'zustand'
+import { vanillaStore } from './vanillaStore'
+
+const useBoundStore = (selector) => useStore(vanillaStore, selector)
+```
+
+:warning: Note that middlewares that modify `set` or `get` are not applied to `getState` and `setState`.
+
+## Transient updates (for often occurring state-changes)
+
+The subscribe function allows components to bind to a state-portion without forcing re-render on changes. Best combine it with useEffect for automatic unsubscribe on unmount. This can make a [drastic](https://codesandbox.io/s/peaceful-johnson-txtws) performance impact when you are allowed to mutate the view directly.
+
+```jsx
+const useScratchStore = create((set) => ({ scratches: 0, ... }))
+
+const Component = () => {
+  // Fetch initial state
+  const scratchRef = useRef(useScratchStore.getState().scratches)
+  // Connect to the store on mount, disconnect on unmount, catch state-changes in a reference
+  useEffect(() => useScratchStore.subscribe(
+    state => (scratchRef.current = state.scratches)
+  ), [])
+  ...
+```
+
+## Sick of reducers and changing nested states? Use Immer!
+
+Reducing nested structures is tiresome. Have you tried [immer](https://github.com/mweststrate/immer)?
+
+```jsx
+import { produce } from 'immer'
+
+const useLushStore = create((set) => ({
+  lush: { forest: { contains: { a: 'bear' } } },
+  clearForest: () =>
+    set(
+      produce((state) => {
+        state.lush.forest.contains = null
+      }),
+    ),
+}))
+
+const clearForest = useLushStore((state) => state.clearForest)
+clearForest()
+```
+
+[Alternatively, there are some other solutions.](./docs/learn/guides/updating-state.md#with-immer)
+
+## Persist middleware
+
+You can persist your store's data using any kind of storage.
+
+```jsx
+import { create } from 'zustand'
+import { persist, createJSONStorage } from 'zustand/middleware'
+
+const useFishStore = create(
+  persist(
+    (set, get) => ({
+      fishes: 0,
+      addAFish: () => set({ fishes: get().fishes + 1 }),
+    }),
+    {
+      name: 'food-storage', // name of the item in the storage (must be unique)
+      storage: createJSONStorage(() => sessionStorage), // (optional) by default, 'localStorage' is used
+    },
+  ),
+)
+```
+
+[See the full documentation for this middleware.](./docs/reference/integrations/persisting-store-data.md)
+
+## Immer middleware
+
+Immer is available as middleware too.
+
+```jsx
+import { create } from 'zustand'
+import { immer } from 'zustand/middleware/immer'
+
+const useBeeStore = create(
+  immer((set) => ({
+    bees: 0,
+    addBees: (by) =>
+      set((state) => {
+        state.bees += by
+      }),
+  })),
+)
+```
+
+## Can't live without redux-like reducers and action types?
+
+```jsx
+const types = { increase: 'INCREASE', decrease: 'DECREASE' }
+
+const reducer = (state, { type, by = 1 }) => {
+  switch (type) {
+    case types.increase:
+      return { grumpiness: state.grumpiness + by }
+    case types.decrease:
+      return { grumpiness: state.grumpiness - by }
+  }
+}
+
+const useGrumpyStore = create((set) => ({
+  grumpiness: 0,
+  dispatch: (args) => set((state) => reducer(state, args)),
+}))
+
+const dispatch = useGrumpyStore((state) => state.dispatch)
+dispatch({ type: types.increase, by: 2 })
+```
+
+Or, just use our redux-middleware. It wires up your main-reducer, sets the initial state, and adds a dispatch function to the state itself and the vanilla API.
+
+```jsx
+import { redux } from 'zustand/middleware'
+
+const useGrumpyStore = create(redux(reducer, initialState))
+```
+
+## Redux devtools
+
+Install the [Redux DevTools Chrome extension](https://chromewebstore.google.com/detail/redux-devtools/lmhkpmbekcpmknklioeibfkpmmfibljd) to use the devtools middleware.
+
+```jsx
+import { devtools } from 'zustand/middleware'
+
+// Usage with a plain action store, it will log actions as "setState"
+const usePlainStore = create(devtools((set) => ...))
+// Usage with a redux store, it will log full action types
+const useReduxStore = create(devtools(redux(reducer, initialState)))
+```
+
+One redux devtools connection for multiple stores
+
+```jsx
+import { devtools } from 'zustand/middleware'
+
+// Usage with a plain action store, it will log actions as "setState"
+const usePlainStore1 = create(devtools((set) => ..., { name, store: storeName1 }))
+const usePlainStore2 = create(devtools((set) => ..., { name, store: storeName2 }))
+// Usage with a redux store, it will log full action types
+const useReduxStore1 = create(devtools(redux(reducer, initialState)), { name, store: storeName3 })
+const useReduxStore2 = create(devtools(redux(reducer, initialState)), { name, store: storeName4 })
+```
+
+Assigning different connection names will separate stores in redux devtools. This also helps group different stores into separate redux devtools connections.
+
+devtools takes the store function as its first argument, optionally you can name the store or configure [serialize](https://github.com/zalmoxisus/redux-devtools-extension/blob/master/docs/API/Arguments.md#serialize) options with a second argument.
+
+Name store: `devtools(..., {name: "MyStore"})`, which will create a separate instance named "MyStore" in the devtools.
+
+Serialize options: `devtools(..., { serialize: { options: true } })`.
+
+#### Logging Actions
+
+devtools will only log actions from each separated store unlike in a typical _combined reducers_ redux store. See an approach to combining stores https://github.com/pmndrs/zustand/issues/163
+
+You can log a specific action type for each `set` function by passing a third parameter:
+
+```jsx
+const useBearStore = create(devtools((set) => ({
+  ...
+  eatFish: () => set(
+    (prev) => ({ fishes: prev.fishes > 1 ? prev.fishes - 1 : 0 }),
+    undefined,
+    'bear/eatFish'
+  ),
+  ...
+```
+
+You can also log the action's type along with its payload:
+
+```jsx
+  ...
+  addFishes: (count) => set(
+    (prev) => ({ fishes: prev.fishes + count }),
+    undefined,
+    { type: 'bear/addFishes', count, }
+  ),
+  ...
+```
+
+If an action type is not provided, it is defaulted to "anonymous". You can customize this default value by providing an `anonymousActionType` parameter:
+
+```jsx
+devtools(..., { anonymousActionType: 'unknown', ... })
+```
+
+If you wish to disable devtools (on production for instance). You can customize this setting by providing the `enabled` parameter:
+
+```jsx
+devtools(..., { enabled: false, ... })
+```
+
+## React context
+
+The store created with `create` doesn't require context providers. In some cases, you may want to use contexts for dependency injection or if you want to initialize your store with props from a component. Because the normal store is a hook, passing it as a normal context value may violate the rules of hooks.
+
+The recommended method available since v4 is to use the vanilla store.
+
+```jsx
+import { createContext, useContext } from 'react'
+import { createStore, useStore } from 'zustand'
+
+const store = createStore(...) // vanilla store without hooks
+
+const StoreContext = createContext()
+
+const App = () => (
+  <StoreContext.Provider value={store}>
+    ...
+  </StoreContext.Provider>
+)
+
+const Component = () => {
+  const store = useContext(StoreContext)
+  const slice = useStore(store, selector)
+  ...
+```
+
+## TypeScript Usage
+
+Basic typescript usage doesn't require anything special except for writing `create<State>()(...)` instead of `create(...)`...
+
+```ts
+import { create } from 'zustand'
+import { devtools, persist } from 'zustand/middleware'
+import type {} from '@redux-devtools/extension' // required for devtools typing
+
+interface BearState {
+  bears: number
+  increase: (by: number) => void
+}
+
+const useBearStore = create<BearState>()(
+  devtools(
+    persist(
+      (set) => ({
+        bears: 0,
+        increase: (by) => set((state) => ({ bears: state.bears + by })),
+      }),
+      {
+        name: 'bear-storage',
+      },
+    ),
+  ),
+)
+```
+
+A more detailed TypeScript guide is [here](docs/learn/guides/beginner-typescript.md) and [there](docs/learn/guides/advanced-typescript.md).
+
+## Best practices
+
+- You may wonder how to organize your code for better maintenance: [Splitting the store into separate slices](./docs/learn/guides/slices-pattern.md).
+- Recommended usage for this unopinionated library: [Flux inspired practice](./docs/learn/guides/flux-inspired-practice.md).
+- [Calling actions outside a React event handler in pre-React 18](./docs/learn/guides/event-handler-in-pre-react-18.md).
+- [Testing](./docs/learn/guides/testing.md)
+- For more, have a look [in the docs folder](./docs/index.md)
+
+## Third-Party Libraries
+
+Some users may want to extend Zustand's feature set which can be done using third-party libraries made by the community. For information regarding third-party libraries with Zustand, visit [the doc](./docs/reference/integrations/third-party-libraries.md).
+
+## Comparison with other libraries
+
+- [Difference between zustand and other state management libraries for React](https://zustand.docs.pmnd.rs/learn/getting-started/comparison)
